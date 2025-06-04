@@ -11,6 +11,7 @@ Este projeto implementa uma aplicação de chat em tempo real com comunicação 
 - **Ícones Personalizados:** Cada usuário recebe um emoji único como ícone.
 - **Notificações de Conexão:** Informações visuais sobre o status da conexão.
 - **Interface Responsiva:** Layout adaptável para diferentes dispositivos.
+- **Ele é feio**
 
 ---
 

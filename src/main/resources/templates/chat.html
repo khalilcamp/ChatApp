@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Chat App</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.1/stomp.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #181C14;
+        }
+        #messageBox {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: #ef4444;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.3s ease-in-out;
+            display: none;
+        }
+        #messageBox.show {
+            opacity: 1;
+            display: block;
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen">
+<div class="max-w-xl w-full mx-auto p-6 bg-white rounded-xl shadow-lg">
+    <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">Real-Time Chat App</h1>
+
+    <div id="chat" class="h-72 overflow-y-auto border border-gray-300 rounded-lg p-4 mb-4 bg-gray-50">
+    </div>
+
+    <div class="flex mb-4">
+        <input id="senderInput" type="text" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Seu nome...">
+    </div>
+
+    <div class="flex mb-4">
+        <input id="messageInput" type="text" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Sua mensagem...">
+        <button id="sendMessage" class="ml-2 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-200 ease-in-out">
+            Enviar
+        </button>
+    </div>
+</div>
+
+<div id="messageBox" class="text-center"></div>
+
+<script>
+    let stompClient = null;
+
+    const iconPool = ['😀', '😎', '🤩', '🚀', '🌟', '🌈', '💡', '💬', '🎉', '🤖'];
+    const senderIcons = new Map();
+    let nextIconIndex = 0;
+
+    function getSenderIcon(senderName) {
+        if (!senderIcons.has(senderName)) {
+            const icon = iconPool[nextIconIndex];
+            senderIcons.set(senderName, icon);
+            nextIconIndex = (nextIconIndex + 1) % iconPool.length;
+        }
+        return senderIcons.get(senderName);
+    }
+
+    function showCustomMessage(message, type = 'error') {
+        const messageBox = document.getElementById('messageBox');
+        messageBox.textContent = message;
+        messageBox.className = 'text-center show';
+
+        if (type === 'success') {
+            messageBox.style.backgroundColor = '#22c55e';
+        } else {
+            messageBox.style.backgroundColor = '#ef4444';
+        }
+
+        setTimeout(() => {
+            messageBox.classList.remove('show');
+        }, 3000);
+    }
+
+    function setConnected(connected) {
+        const sendMessageButton = document.getElementById('sendMessage');
+        if (sendMessageButton) {
+            sendMessageButton.disabled = !connected;
+            if (connected) {
+                sendMessageButton.textContent = 'Enviar';
+                sendMessageButton.classList.remove('bg-gray-400', 'cursor-not-allowed');
+                sendMessageButton.classList.add('bg-blue-600', 'hover:bg-blue-700');
+            } else {
+                sendMessageButton.textContent = 'Conectando...';
+                sendMessageButton.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+                sendMessageButton.classList.add('bg-gray-400', 'cursor-not-allowed');
+            }
+        }
+    }
+
+    function connect() {
+        setConnected(false);
+        try {
+            const socket = new SockJS('/chat');
+            stompClient = Stomp.over(socket);
+
+            stompClient.connect({}, function(frame) {
+                console.log('Connected: ' + frame);
+                setConnected(true);
+                showCustomMessage('Conectado ao chat!', 'success');
+
+                stompClient.subscribe("/topic/messages", function(message) {
+                    try {
+                        console.log("Mensagem recebida (raw):", message.body);
+                        const chatMessage = JSON.parse(message.body);
+                        showMessage(chatMessage);
+                    } catch (e) {
+                        console.error("Erro ao analisar o corpo da mensagem:", e, message.body);
+                        showCustomMessage('Erro ao processar mensagem recebida.', 'error');
+                    }
+                });
+            }, function(error) {
+                console.error("Erro de conexão STOMP:", error);
+                setConnected(false);
+                showCustomMessage('Erro na conexão com o servidor. Tentando reconectar...', 'error');
+                setTimeout(connect, 5000);
+            });
+        } catch (e) {
+            console.error("Erro de inicialização SockJS:", e);
+            setConnected(false);
+            showCustomMessage('Erro ao inicializar SockJS. Verifique o caminho do servidor.', 'error');
+        }
+    }
+
+    function showMessage(message) {
+        const chat = document.getElementById('chat');
+        if (!chat) return;
+
+        const messageElement = document.createElement('div');
+        console.log("Objeto de mensagem analisado:", message);
+
+        const sender = message.sender || message.from || 'Desconhecido';
+        const content = message.content || message.text || 'Mensagem vazia';
+
+        const senderIcon = getSenderIcon(sender);
+
+        messageElement.textContent = `${senderIcon} ${sender}: ${content}`;
+        messageElement.className = "border-b border-gray-200 pb-1 mb-1 text-gray-700";
+
+        chat.appendChild(messageElement);
+        chat.scrollTop = chat.scrollHeight;
+    }
+
+    function sendMessage() {
+        const senderInput = document.getElementById('senderInput');
+        const messageInput = document.getElementById('messageInput');
+
+        const sender = senderInput.value.trim();
+        const content = messageInput.value.trim();
+
+        if (!sender || !content) {
+            showCustomMessage("Por favor, preencha seu nome e a mensagem.");
+            return;
+        }
+
+        if (stompClient && stompClient.connected) {
+            const chatMessage = { sender, content };
+            console.log("Mensagem a ser enviada pelo frontend:", chatMessage);
+            stompClient.send("/app/sendMessage", {}, JSON.stringify(chatMessage));
+            messageInput.value = '';
+        } else {
+            showCustomMessage("Não conectado ao servidor. Por favor, aguarde ou tente novamente.", 'error');
+        }
+    }
+
+    document.getElementById('sendMessage').onclick = sendMessage;
+
+    window.onload = connect;
+</script>
+</body>
+</html>
